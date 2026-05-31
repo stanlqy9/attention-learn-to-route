@@ -206,7 +206,7 @@ if __name__ == "__main__":
 
     opts = parser.parse_args()
 
-    assert opts.o is None or (len(opts.datasets) == 1 and len(opts.width) <= 1), \
+    assert opts.o is None or (len(opts.datasets) == 1 and (opts.width is None or len(opts.width) <= 1)), \
         "Cannot specify result filename with more than one dataset or more than one width"
 
     widths = opts.width if opts.width is not None else [0]

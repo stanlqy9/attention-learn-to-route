@@ -12,7 +12,7 @@ def save_dataset(dataset, filename):
 
     filedir = os.path.split(filename)[0]
 
-    if not os.path.isdir(filedir):
+    if filedir and not os.path.isdir(filedir):
         os.makedirs(filedir)
 
     with open(check_extension(filename), 'wb') as f:

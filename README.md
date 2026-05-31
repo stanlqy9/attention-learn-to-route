@@ -1,4 +1,104 @@
-> Note: I am currently not able to actively maintain this repository. Please also checkout more recent implementations, e.g. https://github.com/ai4co/rl4co and https://github.com/cpwan/RLOR.
+# Orienteering Problem on Real Cities (Capital_Cities)
+
+This fork has been trimmed to focus on the **Orienteering Problem (OP)** and extended
+to run the pretrained Attention Model on a **real-world list of cities** (e.g. US state
+capitals) instead of randomly generated points.
+
+## What the OP is here
+
+Given a depot, a set of cities each with a **prize**, and a maximum route **distance
+budget**, find a single loop (depot → cities → depot) that **maximizes total prize
+collected** without exceeding the budget. Visiting every city is optional — the model
+decides which cities are worth the detour.
+
+> Note on `max_length`: it is a **distance budget**, not a number of cities. How many
+> cities get visited is an *output* that depends on the budget, the geography, and the
+> prizes.
+
+## Setup
+
+```bash
+# from the repo root
+python3 -m venv venv
+source venv/bin/activate          # re-run this each new terminal session
+pip install -r requirements.txt
+```
+
+Requires Python ≥ 3.8 and PyTorch ≥ 1.7 (see `requirements.txt`). On a machine without
+an NVIDIA GPU, add `--no_cuda` to the `eval.py` command below.
+
+## Input file format
+
+A plain-text file, one city per non-blank line:
+
+```
+Name,ST          <lat> <lon>\t<prize>
+Albany,NY        42.652552778 -73.75732222	100
+```
+
+`Capital_Cities.txt` (48 US state capitals) is included as an example.
+
+## Workflow (3 steps)
+
+**1 — Convert the .txt into an OP instance** (`txt_to_op.py`)
+
+```bash
+python txt_to_op.py Capital_Cities.txt --depot "Denver,CO" --max_length 6600 --out data/op/capitals.pkl
+```
+
+- `--depot` — a city name exactly as in the file (e.g. `"Denver,CO"`), or `center`
+  for the geographic centroid (default).
+- `--depot-as-node` — *(optional)* keep the depot city as a collectable node too. By
+  **default the depot is start/end only** (standard OP); without this flag the model
+  will not waste distance revisiting the depot mid-route.
+- `--max_length` — distance budget **in miles**. If omitted, a value ≈ half the full
+  nearest-neighbour tour is suggested automatically. The script prints the scale, the
+  full-tour estimate, and what fraction of the full tour your budget represents.
+- Writes `data/op/capitals.pkl` (the instance) and `data/op/capitals.names.json`
+  (city names + original lat/lon, used for decoding).
+
+How distances are handled (so results are honest):
+- **Model input** — coordinates are projected (equirectangular, longitude scaled by
+  cos(latitude)) into the `[0,1]` box the model was trained on. `--max_length` miles
+  are converted into that same normalized space.
+- **Reporting** — the final route length is measured back in **real miles using the
+  haversine formula** on the original lat/lon (see step 3).
+
+**2 — Run the pretrained model** (existing `eval.py`)
+
+```bash
+python eval.py data/op/capitals.pkl --model pretrained/op_dist_50 --decode_strategy greedy -o results.pkl -f
+```
+
+- `pretrained/op_dist_50` is the OP checkpoint (distance-based prizes). `op_const_*`
+  and `op_unif_*` are also available.
+- `-f` overwrites an existing `results.pkl`. Add `--no_cuda` if you have no GPU.
+- `--decode_strategy sample --width 1280 --eval_batch_size 1` reports the best of 1280
+  samples (usually a bit better than `greedy`).
+
+**3 — Decode the route into city names + real miles** (`decode_route.py`)
+
+```bash
+python decode_route.py results.pkl data/op/capitals.names.json
+```
+
+Prints the route (`Denver,CO -> SaintPaul,MN -> ... -> Denver,CO`), prize collected vs.
+possible, the **true route length in miles (haversine)**, and the list of skipped cities.
+
+## Notes / caveats
+
+- **The model is a strong heuristic, not a proven optimum.** The pretrained weights were
+  learned on random uniform points; real geography is out-of-distribution, so the route
+  is a good guess rather than guaranteed optimal. For a reference solution, run a
+  classical baseline (`problems/op/op_baseline.py`, e.g. Tsiligirides) on the same `.pkl`.
+- **Sweep the budget** to see behaviour: lower `--max_length` visits fewer, higher-value,
+  well-placed cities; higher visits more. ≈ half the full tour is the hardest/most
+  balanced setting (≈ 50% of cities).
+- This fork keeps only the OP problem; `txt_to_op.py`, `decode_route.py`,
+  `requirements.txt`, and `Capital_Cities.txt` were added on top of the original repo.
+
+---
+
 
 # Attention, Learn to Solve Routing Problems!
 
